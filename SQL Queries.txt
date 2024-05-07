@@ -1,0 +1,306 @@
+ Q1- Using OnlineRetail dataset 
+• write at least 5 analytical SQL queries that tells a story about the data 
+1)
+-- Calculate total spending for each customer
+WITH TO_CUSTOMERS AS (
+ SELECT
+ Customer_ID,
+ SUM(Quantity * Price) AS TotalSpending
+ FROM
+ tableRetail
+ GROUP BY
+ Customer_ID
+ ORDER BY
+ TotalSpending DESC
+),
+-- Assign rank to each customer based on total spending
+ORDER_R AS (
+ SELECT
+ Customer_ID,
+ TotalSpending,
+ ROW_NUMBER() OVER(ORDER BY TotalSpending DESC) AS RANK_ORDER
+ FROM
+ TO_CUSTOMERS
+)
+-- Select top 5 customers based on rank
+SELECT
+ * 
+FROM
+ ORDER_R
+WHERE
+ RANK_ORDER < 6;
+
+2)
+-- Calculate total quantity sold for each product
+WITH TO_PRODUCT AS (
+ SELECT
+ StockCode,
+ SUM(Quantity) AS TotalSold 
+ FROM
+ tableRetail
+ GROUP BY
+ StockCode
+ ORDER BY
+ TotalSold DESC
+),
+-- Assign rank to each product based on total quantity sold
+ORDER_R AS (
+ SELECT
+ StockCode,
+ TotalSold,
+ ROW_NUMBER() OVER(ORDER BY TotalSold DESC) AS "RANK"
+ FROM
+ TO_PRODUCT
+)
+-- Select top 5 products based on rank
+SELECT
+ * 
+FROM
+ ORDER_R
+WHERE
+ "RANK" < 6;
+3)
+-- Extract month from InvoiceDate and calculate total sales for each month
+WITH DETAILS AS (
+ SELECT
+ EXTRACT(MONTH FROM TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI')) AS SalesMonth,
+ SUM(Quantity * Price) AS TotalSales
+ FROM
+ tableRetail
+ GROUP BY
+ EXTRACT(MONTH FROM TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI'))
+)
+-- Select the month with the highest total sales
+SELECT
+ SalesMonth,
+ TotalSales
+FROM (
+ -- Assign rank to each month based on total sales
+ SELECT
+ SalesMonth,
+ TotalSales,
+ ROW_NUMBER() OVER (ORDER BY TotalSales DESC) AS Rank
+ FROM
+ DETAILS
+)
+-- Filter to only include the month with the highest total sales (Rank = 1)
+WHERE
+ Rank = 1;
+4)
+WITH DETAILS AS (
+ SELECT
+ EXTRACT(MONTH FROM TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI')) AS SalesMonth,
+ SUM(Quantity * Price) AS TotalSales
+ FROM
+ tableRetail
+ GROUP BY
+ EXTRACT(MONTH FROM TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI'))
+)
+SELECT
+ SalesMonth,
+ TotalSales
+FROM (
+ SELECT
+ SalesMonth,
+ TotalSales,
+ ROW_NUMBER() OVER (ORDER BY TotalSales ASC) AS Rank
+ FROM
+ DETAILS
+)
+WHERE
+ Rank = 1
+5)
+-- Extract month from InvoiceDate and calculate average order value for each month
+SELECT
+ EXTRACT(MONTH FROM TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI')) AS SalesMonth,
+ AVG(Quantity * Price) AS AvgOrderValue
+FROM
+ tableRetail
+GROUP BY
+ EXTRACT(MONTH FROM TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI'))
+ORDER BY
+ SalesMonth;
+6)
+-- Analyze customer purchasing behavior
+SELECT
+ Customer_ID,
+ COUNT(Invoice) AS TotalPurchases,
+ ROUND(AVG(Quantity)) AS AvgItemsPerPurchase
+FROM
+ tableRetail
+GROUP BY
+ Customer_ID
+ORDER BY
+ TotalPurchases DESC;
+7)
+-- Analyze customer transaction history
+SELECT
+ Customer_ID,
+ COUNT(DISTINCT Invoice) AS TotalTransactions,
+ MAX(TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI')) AS LastPurchaseDate
+FROM
+ tableRetail
+GROUP BY
+ Customer_ID
+ORDER BY
+ LastPurchaseDate;
+8)
+-- Analyze customer purchase history
+SELECT
+ DISTINCT(Customer_ID),
+ FIRST_VALUE(InvoiceDate) OVER (PARTITION BY Customer_ID ORDER BY TO_DATE(InvoiceDate,
+'MM/DD/YYYY HH24:MI')) AS FirstPurchaseDate,
+ FIRST_VALUE(InvoiceDate) OVER (PARTITION BY Customer_ID ORDER BY TO_DATE(InvoiceDate,
+'MM/DD/YYYY HH24:MI') DESC) AS LastPurchaseDate
+FROM
+ tableRetail
+ORDER BY
+ Customer_ID;
+9)
+-- Analyze customer shopping behavior
+SELECT
+ Customer_ID,
+ COUNT(DISTINCT StockCode) AS UniqueProductsPurchased
+FROM
+ tableRetail
+GROUP BY
+ Customer_ID
+ORDER BY
+ UniqueProductsPurchased DESC;
+Q2)
+-- Calculate Recency, Frequency, and Monetary values for each customer
+WITH CUSTOMER AS (
+ SELECT
+ Customer_ID,
+ ROUND(TO_DATE('12/9/2011 12:20:00 PM', 'MM/DD/YYYY HH:MI:SS PM') -
+MAX(TO_DATE(InvoiceDate, 'MM/DD/YYYY HH24:MI'))) AS Recency,
+ COUNT(DISTINCT Invoice) AS Frequency,
+ SUM(Quantity * Price) AS Monetary
+ FROM tableRetail
+ GROUP BY Customer_ID
+),
+-- Calculate R_score, F_score, M_score using NTILE function
+R_F_M AS (
+ SELECT
+ Customer_ID,
+ Recency,
+ Frequency,
+ Monetary,
+ NTILE(5) OVER (ORDER BY Recency DESC) AS R_score,
+ NTILE(5) OVER (ORDER BY Frequency) AS F_score,
+ NTILE(5) OVER (ORDER BY Monetary) AS M_score
+ FROM CUSTOMER
+),
+-- Calculate FM_Score as the average of F_score and M_score
+FM AS (
+ SELECT
+ Customer_ID,
+ Recency,
+ Frequency,
+ Monetary,
+ R_score,
+ F_score,
+ M_score,
+ NTILE(5) OVER (ORDER BY (F_score + M_SCORE) / 2) AS FM_Score
+ FROM R_F_M
+)
+-- Select relevant columns and define customer segments
+SELECT 
+ Customer_ID,
+ Recency,
+ Frequency,
+ Monetary,
+ R_score,
+ FM_Score,
+ CASE
+ WHEN (R_score = 5 AND FM_Score = 5) OR (R_score = 5 AND FM_Score = 4) OR (R_score = 4
+AND FM_Score = 5) THEN 'Champions'
+ WHEN (R_score = 5 AND FM_Score = 2) OR (R_score = 4 AND FM_Score = 2) OR (R_score = 3
+AND FM_Score = 3) OR (R_score = 4 AND FM_Score = 3) THEN 'Potential Loyalists'
+ WHEN (R_score = 5 AND FM_Score = 3) OR (R_score = 4 AND FM_Score = 4) OR (R_score = 3
+AND FM_Score = 5) OR (R_score = 3 AND FM_Score = 4) THEN 'Loyal Customers'
+ WHEN R_score = 5 AND FM_Score = 1 THEN 'Recent Customers'
+ WHEN (R_score = 4 AND FM_Score = 1) OR (R_score = 3 AND FM_Score = 1) THEN 'Promising'
+ WHEN (R_score = 3 AND FM_Score = 2) OR (R_score = 2 AND FM_Score = 3) OR (R_score = 2
+AND FM_Score = 2) THEN 'Customers Needing Attention'
+ WHEN (R_score = 2 AND FM_Score = 5) OR (R_score = 2 AND FM_Score = 4) OR (R_score = 1
+AND FM_Score = 3) THEN 'At Risk'
+ WHEN (R_score = 1 AND FM_Score = 5) OR (R_score = 1 AND FM_Score = 4) THEN 'Cant Lose 
+Them'
+ WHEN (R_score = 1 AND FM_Score = 2) THEN 'Hibernating'
+ WHEN (R_score = 1 AND FM_Score = 1) THEN 'Lost'
+ ELSE 'Undefined'
+ END AS Cust_Segment
+FROM FM
+ORDER BY CUSTOMER_ID DESC;
+
+Q3.1)
+-- Step 1: Assign a row number to each purchase for every customer, ordered by purchase date
+WITH row_number AS (
+ SELECT
+ cust_id,
+ calendar_dt,
+ ROW_NUMBER() OVER (PARTITION BY cust_id ORDER BY calendar_dt) AS orderr
+ FROM
+ customers
+),
+-- Step 2: Calculate the difference between the purchase date and its row number to identify consecutive purchases (consecutive purchases will have the same group id)
+consecutiveDays AS (
+ SELECT
+ cust_id,
+ calendar_dt,
+ orderr,
+ calendar_dt - orderr AS group_id
+ FROM
+ row_number
+),
+-- Step 3: Group consecutive purchases by customer and group id
+max_consecutive_days AS (
+ SELECT
+ cust_id,
+ group_id,
+ COUNT(*) AS consecutive_days
+ FROM
+ consecutiveDays
+ GROUP BY
+ cust_id, group_id
+)
+-- Final Step: Select the maximum consecutive days for each customer
+SELECT
+ cust_id,
+ MAX(consecutive_days) AS max_consecutive_days
+FROM
+ max_consecutive_days
+GROUP BY
+ cust_id
+ORDER BY
+ cust_id;
+Q3.2)
+-- Calculate total amount and days to reach threshold for each customer and date
+WITH cust_amt AS (
+ SELECT
+ cust_id,
+ calendar_dt,
+ SUM(Amt_LE) OVER (PARTITION BY Cust_Id ORDER BY Calendar_Dt) AS total,
+ calendar_dt - FIRST_VALUE(calendar_dt) OVER (PARTITION BY cust_id ORDER BY calendar_dt) AS
+days_to_reach_threshold
+ FROM
+ customers
+),
+-- Identify the minimum days to reach the threshold for each customer
+threshold_days AS (
+ SELECT
+ cust_id,
+ MIN(days_to_reach_threshold) AS days_to_reach_threshold
+ FROM
+ cust_amt
+ WHERE
+ total >= 250
+ GROUP BY
+ cust_id
+)
+-- Calculate the rounded average of days to reach the threshold across all customers
+SELECT
+ ROUND(AVG(days_to_reach_threshold)) AS average_days_threshold
+FROM
+ threshold_days;
