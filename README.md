@@ -42,4 +42,4 @@ a group of customers into subgroups of customers according to their behavior for
 - CTEs.
 - Window Functions.
 - Toad.
-- Power BI.
+- Excel.
